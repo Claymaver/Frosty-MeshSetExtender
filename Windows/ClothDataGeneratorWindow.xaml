@@ -1,0 +1,217 @@
+<ctrl:FrostyDockableWindow x:Class="MeshSetExtender.Windows.ClothDataGeneratorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ctrl="clr-namespace:Frosty.Controls;assembly=FrostyControls"
+        xmlns:core="clr-namespace:Frosty.Core.Controls;assembly=FrostyCore"
+        mc:Ignorable="d"
+        Title="Cloth Data Generator" Height="640" Width="540" 
+        ResizeMode="NoResize" 
+        WindowStartupLocation="CenterScreen"
+        FrostyLoaded="FrostyDockableWindow_FrostyLoaded">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FrostyControls;component/Themes/Generic.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Implicit TextBox style with a simple control template so hover/focus visual changes
+                 (the light-blue highlight) are removed. This applies to all TextBoxes in the window
+                 unless they explicitly override the Template. -->
+            <Style TargetType="TextBox">
+                <Setter Property="Padding" Value="4"/>
+                <Setter Property="FontFamily" Value="Global User Interface"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="{DynamicResource TitlebarBackground}"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBackground}"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    SnapsToDevicePixels="True"
+                                    CornerRadius="0">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="0"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Readonly textbox style - based on the implicit TextBox style so it inherits the
+                 hover/focus-free template and only tweaks read-only specifics. -->
+            <!-- ReadOnlyResBox now inherits the hover-free template -->
+            <Style x:Key="ReadOnlyResBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="IsReadOnly" Value="True"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Background" Value="{StaticResource ControlBackground}"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBackground}"/>
+                <Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=Text}"/>
+            </Style>
+
+            <!-- Editable textbox variant with no hover/focus visual changes.
+                 Based on the implicit TextBox style so it uses the same hover-free template. -->
+            <Style x:Key="NoHoverTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="Background" Value="{DynamicResource TitlebarBackground}"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource ControlBackground}"/>
+                <Style.Triggers>
+                    <!-- Keep the same brushes on mouseover and focus to remove hover/focus effect -->
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource TitlebarBackground}"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource ControlBackground}"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter Property="Background" Value="{DynamicResource TitlebarBackground}"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource ControlBackground}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SectionHeader" TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="Margin" Value="0,0,0,5"/>
+            </Style>
+
+            <Style x:Key="SectionHint" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="Opacity" Value="0.7"/>
+                <Setter Property="Margin" Value="0,-3,0,8"/>
+            </Style>
+
+            <Style x:Key="RowLabel" TargetType="Label">
+                <Setter Property="Width" Value="110"/>
+                <Setter Property="Foreground" Value="{StaticResource FontColor}"/>
+                <Setter Property="FontFamily" Value="Global User Interface"/>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Background="{StaticResource WindowBackground}">
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition Height="38"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Background="{StaticResource ListBackground}">
+            <StackPanel Margin="10">
+
+                <!-- Target Mesh (the mesh we're adding cloth TO) + its existing cloth resources -->
+                <TextBlock Text="Target Mesh" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="The mesh you're adding cloth to. Existing cloth resources are auto-detected; clear to create new." Style="{StaticResource SectionHint}"/>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Label Content="Asset:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="AssetPathText" Style="{StaticResource ReadOnlyResBox}" TextChanged="AssetPathText_TextChanged" Background="{DynamicResource TitlebarBackground}" SelectionOpacity="0"/>
+                </DockPanel>
+                <DockPanel Margin="5,0,5,10" LastChildFill="True">
+                    <Label Content="Mesh Info:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="MeshInfoText" Style="{StaticResource ReadOnlyResBox}" Background="{DynamicResource TitlebarBackground}" SelectionOpacity="0"/>
+                </DockPanel>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Button Content="Clear" Width="50" DockPanel.Dock="Right" Margin="5,0,0,0" Click="ClearTargetClothWrapping_Click"/>
+                    <Button Content="Browse..." Width="75" DockPanel.Dock="Right" Margin="5,0,0,0" Click="BrowseTargetClothWrapping_Click"/>
+                    <Label Content="ClothWrapping:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="TargetClothWrappingText" Style="{StaticResource ReadOnlyResBox}" Text="(Will create new)" Background="{DynamicResource TitlebarBackground}"/>
+                </DockPanel>
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Button Content="Clear" Width="50" DockPanel.Dock="Right" Margin="5,0,0,0" Click="ClearTargetEACloth_Click"/>
+                    <Button Content="Browse..." Width="75" DockPanel.Dock="Right" Margin="5,0,0,0" Click="BrowseTargetEACloth_Click"/>
+                    <Label Content="Cloth:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="TargetEAClothText" Style="{StaticResource ReadOnlyResBox}" Text="(Will create new)" Background="{DynamicResource TitlebarBackground}" SelectionOpacity="0"/>
+                </DockPanel>
+
+                <Border x:Name="SharedClothWarningPanel"
+                        Background="#FFFF6666"
+                        CornerRadius="2"
+                        Padding="8,5"
+                        Margin="5,5,5,0"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="⚠ Shared cloth asset"
+                                   FontWeight="Bold"
+                                   Foreground="#FFFFF5F5"
+                                   Margin="0,0,0,2" FontSize="14"/>
+                        <TextBlock x:Name="SharedClothWarningText"
+                                   TextWrapping="Wrap"
+                                   FontSize="12"
+                                   Foreground="#FFFFF5F5"/>
+                    </StackPanel>
+                </Border>
+
+                <Separator Margin="0,10,0,10" Background="{StaticResource ControlBackground}"/>
+
+                <!-- Template Mesh (copy cloth FROM) -->
+                <TextBlock Text="Template Mesh" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="A mesh with existing cloth data to copy from." Style="{StaticResource SectionHint}"/>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Button Content="Browse Mesh..." Width="100" DockPanel.Dock="Right" Margin="5,0,0,0" Click="BrowseTemplateMesh_Click"/>
+                    <Label Content="ClothWrapping:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="TemplateClothWrappingText" Style="{StaticResource ReadOnlyResBox}" Text="(Select template mesh)" Background="{DynamicResource TitlebarBackground}" SelectionOpacity="0"/>
+                </DockPanel>
+                <DockPanel Margin="5,0,5,10" LastChildFill="True">
+                    <Label Content="Cloth:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="TemplateEAClothText" Style="{StaticResource ReadOnlyResBox}" Text="(Select template mesh)" Background="{DynamicResource TitlebarBackground}" SelectionOpacity="0"/>
+                </DockPanel>
+
+                <Separator Margin="0,5,0,10" Background="{StaticResource ControlBackground}"/>
+
+                <!-- Settings -->
+                <TextBlock Text="Settings" Style="{StaticResource SectionHeader}"/>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Label Content="Precision:" Style="{StaticResource RowLabel}"/>
+                    <TextBlock x:Name="PrecisionValueText" Text="6" Width="20" VerticalAlignment="Center" Foreground="{StaticResource FontColor}" Margin="0,0,5,0"/>
+                    <Slider x:Name="PrecisionSlider" Minimum="6" Maximum="8" Value="6" IsSnapToTickEnabled="True" TickFrequency="1" SmallChange="1" LargeChange="1"
+                            VerticalAlignment="Center" ValueChanged="PrecisionSlider_ValueChanged"
+                            ToolTip="Controls vertex matching precision. Lower = more tolerant (faster, less accurate). Higher = stricter matching (slower, more accurate). Default: 6"/>
+                </DockPanel>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Label Content="Debug Log:" Style="{StaticResource RowLabel}"/>
+                    <CheckBox x:Name="DebugCheckBox" VerticalAlignment="Center" IsChecked="False"
+                              ToolTip="When enabled, prints verbose details to Frosty's log. Useful for troubleshooting."/>
+                    <TextBlock Text="Print verbose info to Frosty log" VerticalAlignment="Center" Foreground="{StaticResource FontColor}" Opacity="0.6" FontSize="11" Margin="5,0,0,0"/>
+                </DockPanel>
+
+                <DockPanel Margin="5,0,5,5" LastChildFill="True">
+                    <Label Content="New name prefix:" Style="{StaticResource RowLabel}"/>
+                    <TextBox x:Name="NewResourceNameText" Style="{StaticResource NoHoverTextBox}" Padding="4" FontFamily="Global User Interface" BorderThickness="1"
+                             Background="{DynamicResource TitlebarBackground}"
+                             Foreground="{StaticResource FontColor}"
+                             CaretBrush="{StaticResource FontColor}"
+                             BorderBrush="{StaticResource ControlBackground}"/>
+                </DockPanel>
+
+                <!-- Status Bar -->
+                <Border Margin="0,10,0,0" Background="{StaticResource ControlBackground}" CornerRadius="2" Padding="8,5">
+                    <TextBlock x:Name="StatusText" Text="Select target mesh, then choose template mesh" FontSize="11" Foreground="{StaticResource FontColor}"/>
+                </Border>
+
+            </StackPanel>
+        </Grid>
+
+        <!-- Bottom Button Bar -->
+        <Border Grid.Row="1" Background="{StaticResource WindowBackground}">
+            <Grid Margin="8">
+                <Button x:Name="cancelButton" Content="Cancel" HorizontalAlignment="Left" Width="75" Click="CancelButton_Click"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="generateButton" Content="Generate" Width="100" Click="GenerateButton_Click" IsEnabled="False"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</ctrl:FrostyDockableWindow>

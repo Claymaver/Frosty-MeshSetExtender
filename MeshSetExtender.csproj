@@ -1,0 +1,153 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+	<PropertyGroup>
+		<!-- Configurations -->
+		<Configurations>Developer - Debug;Release - Alpha;Release - Beta;Release - Final</Configurations>
+		<Platforms>x64</Platforms>
+
+		<!-- Target -->
+		<TargetFramework>net48</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<OutputType>Library</OutputType>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+		<!-- Assembly Info -->
+		<AssemblyTitle>Frosty MeshSet Extender</AssemblyTitle>
+		<Product>Frosty MeshSet Extender</Product>
+		<Copyright>Copyright 2026</Copyright>
+
+		<!-- Clean Output -->
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<!-- Single output directory -->
+		<OutputPath>$(MSBuildProjectDirectory)\bin\</OutputPath>
+
+		<!-- Costura Fody: embed assemblies into the output DLL -->
+		<WeaverConfiguration>
+			<Weavers>
+				<Costura>
+					<IncludeAssemblies>
+						0Harmony
+					</IncludeAssemblies>
+				</Costura>
+			</Weavers>
+		</WeaverConfiguration>
+	</PropertyGroup>
+
+	<!-- Debug Configuration -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Developer - Debug'">
+		<DebugSymbols>true</DebugSymbols>
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
+		<Optimize>false</Optimize>
+	</PropertyGroup>
+
+	<!-- Release Configurations -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release - Alpha'">
+		<DefineConstants>TRACE</DefineConstants>
+		<Optimize>true</Optimize>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release - Beta'">
+		<DefineConstants>TRACE</DefineConstants>
+		<Optimize>true</Optimize>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release - Final'">
+		<DefineConstants>TRACE</DefineConstants>
+		<Optimize>true</Optimize>
+	</PropertyGroup>
+
+	<!-- Frosty References -->
+	<ItemGroup>
+		<Reference Include="FrostyControls">
+			<HintPath>..\..\..\Modding\FrostyEditor\FrostyControls.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="FrostyCore">
+			<HintPath>..\..\..\Modding\FrostyEditor\FrostyCore.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="FrostyEditor">
+			<HintPath>..\..\..\Modding\FrostyEditor\FrostyEditor.exe</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="FrostyHash">
+			<HintPath>..\..\..\Modding\FrostyEditor\FrostyHash.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="FrostySdk">
+			<HintPath>..\..\..\Modding\FrostyEditor\FrostySdk.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="TexturePlugin">
+			<HintPath>..\..\..\Modding\FrostyEditor\Plugins\TexturePlugin.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="MeshSetPlugin">
+			<HintPath>..\..\..\Modding\FrostyEditor\Plugins\MeshSetPlugin.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="SharpDX">
+			<HintPath>..\..\..\Modding\FrostyEditor\ThirdParty\SharpDX.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="SharpDX.Mathematics">
+			<HintPath>..\..\..\Modding\FrostyEditor\ThirdParty\SharpDX.Mathematics.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="SharpDX.Direct3D11">
+			<HintPath>..\..\..\Modding\FrostyEditor\ThirdParty\SharpDX.Direct3D11.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="SharpDX.DXGI">
+			<HintPath>..\..\..\Modding\FrostyEditor\ThirdParty\SharpDX.DXGI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+
+		<Reference Include="Microsoft.CSharp" />
+		<Reference Include="PresentationCore" />
+		<Reference Include="PresentationFramework" />
+		<Reference Include="System.Xaml" />
+		<Reference Include="WindowsBase" />
+		<Reference Include="System.Windows.Forms" />
+	</ItemGroup>
+
+	<!-- NuGet Packages -->
+	<ItemGroup>
+		<PackageReference Include="Costura.Fody" Version="6.0.0">
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="Lib.Harmony" Version="2.4.2" />
+	</ItemGroup>
+
+	<!-- Embedded meshoptimizer.dll (optional) -->
+	<ItemGroup Condition="Exists('ThirdParty\meshoptimizer.dll')">
+		<EmbeddedResource Include="ThirdParty\meshoptimizer.dll">
+			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
+		</EmbeddedResource>
+	</ItemGroup>
+
+	<!-- Embedded images -->
+	<ItemGroup>
+		<Resource Include="Images\ClothIcon.png" />
+	</ItemGroup>
+
+	<!-- Exclude standalone dev tools from plugin build -->
+	<ItemGroup>
+		<Compile Remove="Tools\ResChunkInspector\**\*.cs" />
+		<EmbeddedResource Remove="Tools\ResChunkInspector\**\*" />
+		<None Remove="Tools\ResChunkInspector\**\*" />
+		<Content Remove="Tools\ResChunkInspector\**\*" />
+	</ItemGroup>
+
+</Project>

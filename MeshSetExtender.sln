@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36930.0 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MeshSetExtender", "MeshSetExtender.csproj", "{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Developer - Debug|x64 = Developer - Debug|x64
+		Release - Alpha|x64 = Release - Alpha|x64
+		Release - Beta|x64 = Release - Beta|x64
+		Release - Final|x64 = Release - Final|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Developer - Debug|x64.ActiveCfg = Developer - Debug|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Developer - Debug|x64.Build.0 = Developer - Debug|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Alpha|x64.ActiveCfg = Release - Alpha|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Alpha|x64.Build.0 = Release - Alpha|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Beta|x64.ActiveCfg = Release - Beta|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Beta|x64.Build.0 = Release - Beta|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Final|x64.ActiveCfg = Release - Final|x64
+		{F1DAA4EF-8EC4-98DA-0919-A896E6AB0365}.Release - Final|x64.Build.0 = Release - Final|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DE8779DE-15AC-4BDB-9A29-2E1A5CB62E74}
+	EndGlobalSection
+EndGlobal
