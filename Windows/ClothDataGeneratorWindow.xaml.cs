@@ -119,7 +119,7 @@ namespace MeshSetExtender.Windows
                     LoadTargetMeshData();
                     
                     task.Update("Finding existing cloth resources...");
-                    AutoDetectTargetClothResources(entry.Name);
+                    AutoDetectTargetClothResources(entry);
                     
                     // If target already has cloth wrapping, parse it for normals/tangents
                     if (_targetClothWrappingEntry != null)
@@ -195,45 +195,79 @@ namespace MeshSetExtender.Windows
 
         /// <summary>
         /// Auto-detect cloth resources for the TARGET mesh
-        /// Uses strict matching: must end with "_clothwrappingasset" or "_eacloth"
+        /// Uses linked assets first, then name scoring as fallback.
         /// </summary>
-        private void AutoDetectTargetClothResources(string meshAssetPath)
+        private void AutoDetectTargetClothResources(EbxAssetEntry meshEntry)
         {
             _targetClothWrappingEntry = null;
             _targetEAClothEntry = null;
-            
-            // Extract the mesh name pattern (e.g., "obiwan_03_skirt" from the path)
-            string meshName = System.IO.Path.GetFileName(meshAssetPath).ToLower();
-            
+
+            if (meshEntry == null || string.IsNullOrEmpty(meshEntry.Name))
+                return;
+
+            string meshAssetPath = meshEntry.Name;
+
             // Get parent path for search scope
             int lastSlash = meshAssetPath.LastIndexOf('/');
             string parentPath = lastSlash > 0 ? meshAssetPath.Substring(0, lastSlash).ToLower() : "";
-            
+
+            var clothWrappings = new List<ResAssetEntry>();
+            var eaCloths = new List<ResAssetEntry>();
+
             foreach (var resEntry in App.AssetManager.EnumerateRes())
             {
                 string resName = resEntry.Name.ToLower();
-                
+
                 // Must be in same directory tree
                 if (!resName.StartsWith(parentPath)) continue;
-                
-                // Strict matching for ClothWrappingAsset (must end with it)
+
                 if (ClothAssetNaming.IsClothWrappingAsset(resName))
                 {
-                    if (_targetClothWrappingEntry == null)
-                    {
-                        _targetClothWrappingEntry = resEntry;
-                        ClothLogger.LogDebug($"Auto-detected target ClothWrapping: {resEntry.Name}");
-                    }
+                    clothWrappings.Add(resEntry);
                 }
-                // Strict matching for EACloth / Cloth (must end with "_eacloth" or "_cloth")
                 else if (ClothAssetNaming.IsClothAsset(resName))
                 {
-                    if (_targetEAClothEntry == null)
-                    {
-                        _targetEAClothEntry = resEntry;
-                        ClothLogger.LogDebug($"Auto-detected target EACloth: {resEntry.Name}");
-                    }
+                    eaCloths.Add(resEntry);
                 }
+            }
+
+            string meshStem = GetMeshStemForMatching(meshAssetPath);
+            var linkedClothWrappings = new List<ResAssetEntry>();
+            var linkedEaCloths = new List<ResAssetEntry>();
+            CollectLinkedClothResources(meshEntry, linkedClothWrappings, linkedEaCloths);
+
+            var linkedCwNames = new HashSet<string>(linkedClothWrappings.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+            var linkedEcNames = new HashSet<string>(linkedEaCloths.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+
+            var pairClothWrappings = MergeCandidates(linkedClothWrappings, clothWrappings);
+            var pairEaCloths = MergeCandidates(linkedEaCloths, eaCloths);
+
+            if (TrySelectBestPair(meshStem, pairClothWrappings, pairEaCloths,
+                out var bestCw, out var bestEc, out int bestScore, out string bestCwStem, out string bestEcStem))
+            {
+                _targetClothWrappingEntry = bestCw;
+                _targetEAClothEntry = bestEc;
+
+                string cwSource = linkedCwNames.Contains(bestCw.Name) ? "linked" : "name-fallback";
+                string ecSource = linkedEcNames.Contains(bestEc.Name) ? "linked" : "name-fallback";
+
+                ClothLogger.LogDebug($"Auto-detected target ClothWrapping: {bestCw.Name} (stem={bestCwStem}, score={bestScore}, source={cwSource})");
+                ClothLogger.LogDebug($"Auto-detected target EACloth: {bestEc.Name} (stem={bestEcStem}, score={bestScore}, source={ecSource})");
+                return;
+            }
+
+            _targetClothWrappingEntry = FindBestByStem(meshStem, pairClothWrappings, GetClothWrappingStem);
+            _targetEAClothEntry = FindBestByStem(meshStem, pairEaCloths, GetEAClothStem);
+
+            if (_targetClothWrappingEntry != null)
+            {
+                string source = linkedCwNames.Contains(_targetClothWrappingEntry.Name) ? "linked" : "name-fallback";
+                ClothLogger.LogDebug($"Auto-detected target ClothWrapping (single): {_targetClothWrappingEntry.Name} (source={source})");
+            }
+            if (_targetEAClothEntry != null)
+            {
+                string source = linkedEcNames.Contains(_targetEAClothEntry.Name) ? "linked" : "name-fallback";
+                ClothLogger.LogDebug($"Auto-detected target EACloth (single): {_targetEAClothEntry.Name} (source={source})");
             }
         }
 
@@ -488,7 +522,7 @@ namespace MeshSetExtender.Windows
                     LoadTemplateMeshSet(meshEntry);
                     
                     task.Update("Finding cloth resources...");
-                    AutoDetectTemplateClothResources(meshEntry.Name);
+                    AutoDetectTemplateClothResources(meshEntry);
                     
                     if (_templateClothWrappingEntry != null)
                     {
@@ -541,11 +575,276 @@ namespace MeshSetExtender.Windows
         }
 
         /// <summary>
-        /// Auto-detect cloth resources for the TEMPLATE mesh
-        /// Finds matching pairs (ClothWrapping and EACloth with same base name)
+        /// Builds a comparable stem from a mesh path.
+        /// Example: ".../obiwan_01_sleeves_cloth_mesh" -> "obiwan_01_sleeves"
         /// </summary>
-        private void AutoDetectTemplateClothResources(string meshAssetPath)
+        private static string GetMeshStemForMatching(string meshAssetPath)
         {
+            string meshStem = FileStem(meshAssetPath.ToLower());
+            if (meshStem.EndsWith("_mesh"))
+                meshStem = meshStem.Substring(0, meshStem.Length - "_mesh".Length);
+            return ClothAssetNaming.StripClothSuffix(meshStem);
+        }
+
+        /// <summary>
+        /// Builds a comparable stem from a ClothWrapping resource name.
+        /// Example: ".../obiwan_01_sleeves_clothwrappingasset" -> "obiwan_01_sleeves"
+        /// </summary>
+        private static string GetClothWrappingStem(string resNameLower)
+        {
+            string stem = resNameLower;
+            if (stem.EndsWith("_clothwrappingasset"))
+                stem = stem.Substring(0, stem.Length - "_clothwrappingasset".Length);
+            else
+                stem = stem.Replace("clothwrappingasset", "");
+            return FileStem(stem);
+        }
+
+        /// <summary>
+        /// Builds a comparable stem from an EACloth/Cloth resource name.
+        /// Example: ".../cloth/obiwan_01_sleeves_eacloth" -> "obiwan_01_sleeves"
+        /// </summary>
+        private static string GetEAClothStem(string resNameLower)
+        {
+            return FileStem(ClothAssetNaming.StripClothSuffix(resNameLower));
+        }
+
+        /// <summary>
+        /// Tokenizes a stem for similarity scoring, removing generic cloth words.
+        /// </summary>
+        private static string[] TokenizeStem(string stem)
+        {
+            if (string.IsNullOrEmpty(stem))
+                return Array.Empty<string>();
+
+            return stem.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(t =>
+                    !string.Equals(t, "mesh", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(t, "cloth", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(t, "eacloth", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(t, "clothwrappingasset", StringComparison.OrdinalIgnoreCase) &&
+                    !t.StartsWith("lod", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        /// <summary>
+        /// Scores how similar two stems are.
+        /// Higher score means stronger confidence they're the same cloth "part".
+        /// </summary>
+        private static int ScoreStemSimilarity(string left, string right)
+        {
+            if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right))
+                return 0;
+
+            int score = 0;
+
+            if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+                score += 500;
+
+            if (left.EndsWith(right, StringComparison.OrdinalIgnoreCase)
+                || right.EndsWith(left, StringComparison.OrdinalIgnoreCase)
+                || left.Contains(right)
+                || right.Contains(left))
+            {
+                score += 200;
+            }
+
+            string[] leftTokens = TokenizeStem(left);
+            string[] rightTokens = TokenizeStem(right);
+            if (leftTokens.Length == 0 || rightTokens.Length == 0)
+                return score;
+
+            var rightTokenSet = new HashSet<string>(rightTokens, StringComparer.OrdinalIgnoreCase);
+            int overlap = leftTokens.Count(t => rightTokenSet.Contains(t));
+            score += overlap * 30;
+
+            if (string.Equals(leftTokens[leftTokens.Length - 1], rightTokens[rightTokens.Length - 1], StringComparison.OrdinalIgnoreCase))
+                score += 120;
+
+            return score;
+        }
+
+        /// <summary>
+        /// Scores a CW/EA pair against the selected template mesh.
+        /// </summary>
+        private static int ScoreTemplatePair(string meshStem, string cwStem, string ecStem)
+        {
+            int cwToMesh = ScoreStemSimilarity(cwStem, meshStem);
+            int ecToMesh = ScoreStemSimilarity(ecStem, meshStem);
+            int cwToEc = ScoreStemSimilarity(cwStem, ecStem);
+            return (cwToMesh * 2) + (ecToMesh * 2) + (cwToEc * 3);
+        }
+
+        /// <summary>
+        /// Merges preferred + fallback candidate lists while preserving preferred order.
+        /// </summary>
+        private static List<ResAssetEntry> MergeCandidates(IEnumerable<ResAssetEntry> preferred, IEnumerable<ResAssetEntry> fallback)
+        {
+            var result = new List<ResAssetEntry>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddRange(IEnumerable<ResAssetEntry> source)
+            {
+                if (source == null) return;
+                foreach (var entry in source)
+                {
+                    if (entry == null || string.IsNullOrEmpty(entry.Name)) continue;
+                    if (!seen.Add(entry.Name)) continue;
+                    result.Add(entry);
+                }
+            }
+
+            AddRange(preferred);
+            AddRange(fallback);
+            return result;
+        }
+
+        /// <summary>
+        /// Picks the best CW/EA pair for a mesh stem using similarity scoring.
+        /// </summary>
+        private static bool TrySelectBestPair(
+            string meshStem,
+            IEnumerable<ResAssetEntry> clothWrappings,
+            IEnumerable<ResAssetEntry> eaCloths,
+            out ResAssetEntry bestCw,
+            out ResAssetEntry bestEc,
+            out int bestScore,
+            out string bestCwStem,
+            out string bestEcStem)
+        {
+            bestCw = null;
+            bestEc = null;
+            bestScore = int.MinValue;
+            bestCwStem = null;
+            bestEcStem = null;
+
+            var cwList = clothWrappings?.Where(c => c != null).ToList() ?? new List<ResAssetEntry>();
+            var ecList = eaCloths?.Where(c => c != null).ToList() ?? new List<ResAssetEntry>();
+            if (cwList.Count == 0 || ecList.Count == 0)
+                return false;
+
+            foreach (var cw in cwList)
+            {
+                string cwStem = GetClothWrappingStem(cw.Name.ToLower());
+                foreach (var ec in ecList)
+                {
+                    string ecStem = GetEAClothStem(ec.Name.ToLower());
+                    int pairScore = ScoreTemplatePair(meshStem, cwStem, ecStem);
+                    if (pairScore > bestScore)
+                    {
+                        bestScore = pairScore;
+                        bestCw = cw;
+                        bestEc = ec;
+                        bestCwStem = cwStem;
+                        bestEcStem = ecStem;
+                    }
+                }
+            }
+
+            return bestCw != null && bestEc != null;
+        }
+
+        /// <summary>
+        /// Picks the single best candidate for the mesh stem.
+        /// </summary>
+        private static ResAssetEntry FindBestByStem(
+            string meshStem,
+            IEnumerable<ResAssetEntry> candidates,
+            Func<string, string> stemSelector)
+        {
+            if (candidates == null) return null;
+
+            return candidates
+                .Where(c => c != null)
+                .OrderByDescending(c => ScoreStemSimilarity(stemSelector(c.Name.ToLower()), meshStem))
+                .FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Collects cloth candidates from linked assets for the given mesh.
+        /// This is preferred over name search because links are explicit relationships.
+        /// </summary>
+        private void CollectLinkedClothResources(
+            EbxAssetEntry meshEntry,
+            List<ResAssetEntry> clothWrappings,
+            List<ResAssetEntry> eaCloths)
+        {
+            if (meshEntry == null) return;
+
+            var seenResNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddCandidate(ResAssetEntry resEntry)
+            {
+                if (resEntry == null || string.IsNullOrEmpty(resEntry.Name)) return;
+                if (!seenResNames.Add(resEntry.Name)) return;
+
+                string resName = resEntry.Name.ToLower();
+                if (ClothAssetNaming.IsClothWrappingAsset(resName))
+                    clothWrappings.Add(resEntry);
+                else if (ClothAssetNaming.IsClothAsset(resName))
+                    eaCloths.Add(resEntry);
+            }
+
+            void CollectFromLinkedList(IEnumerable<AssetEntry> linkedAssets)
+            {
+                if (linkedAssets == null) return;
+
+                foreach (var linked in linkedAssets)
+                {
+                    if (linked is ResAssetEntry linkedRes)
+                    {
+                        AddCandidate(linkedRes);
+
+                        // One extra hop catches cases where cloth sits behind an intermediate linked res.
+                        if (linkedRes.LinkedAssets != null)
+                        {
+                            foreach (var child in linkedRes.LinkedAssets)
+                            {
+                                if (child is ResAssetEntry childRes)
+                                    AddCandidate(childRes);
+                            }
+                        }
+                    }
+                    else if (linked is EbxAssetEntry linkedEbx)
+                    {
+                        // Some links are EBX wrappers; resolve by name if there is a same-path res.
+                        try
+                        {
+                            AddCandidate(App.AssetManager.GetResEntry(linkedEbx.Name));
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            CollectFromLinkedList(meshEntry.LinkedAssets);
+
+            try
+            {
+                var meshAsset = App.AssetManager.GetEbx(meshEntry);
+                dynamic root = meshAsset.RootObject;
+                ulong meshSetResRid = root.MeshSetResource;
+                var meshSetRes = App.AssetManager.GetResEntry(meshSetResRid);
+                AddCandidate(meshSetRes);
+                CollectFromLinkedList(meshSetRes?.LinkedAssets);
+            }
+            catch (Exception ex)
+            {
+                ClothLogger.LogDebug($"Linked cloth detection skipped (mesh resource lookup failed): {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Auto-detect cloth resources for the TEMPLATE mesh
+        /// Chooses the best ClothWrapping + EACloth pair for the selected template mesh.
+        /// Uses similarity scoring to avoid cross-mesh pair mixes (e.g. skirt + flaps).
+        /// </summary>
+        private void AutoDetectTemplateClothResources(EbxAssetEntry meshEntry)
+        {
+            if (meshEntry == null || string.IsNullOrEmpty(meshEntry.Name))
+                return;
+
+            string meshAssetPath = meshEntry.Name;
             string meshPathLower = meshAssetPath.ToLower();
             int lastSlash = meshPathLower.LastIndexOf('/');
             string parentPath = lastSlash > 0 ? meshPathLower.Substring(0, lastSlash) : "";
@@ -569,51 +868,48 @@ namespace MeshSetExtender.Windows
                     eaCloths.Add(resEntry);
                 }
             }
-            
-            // Try to find matching pairs by base name
-            // e.g., "leia_princess_01_skirt" should match both "_skirt_clothwrappingasset" and "_skirt_eacloth"
-            foreach (var cw in clothWrappings)
+
+            string meshStem = GetMeshStemForMatching(meshAssetPath);
+
+            var linkedClothWrappings = new List<ResAssetEntry>();
+            var linkedEaCloths = new List<ResAssetEntry>();
+            CollectLinkedClothResources(meshEntry, linkedClothWrappings, linkedEaCloths);
+
+            var linkedCwNames = new HashSet<string>(linkedClothWrappings.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+            var linkedEcNames = new HashSet<string>(linkedEaCloths.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+
+            var pairClothWrappings = MergeCandidates(linkedClothWrappings, clothWrappings);
+            var pairEaCloths = MergeCandidates(linkedEaCloths, eaCloths);
+
+            if (TrySelectBestPair(meshStem, pairClothWrappings, pairEaCloths,
+                out var bestCw, out var bestEc, out int bestScore, out string bestCwStem, out string bestEcStem))
             {
-                // Extract base name from clothwrapping (remove suffix)
-                string cwName = cw.Name.ToLower();
-                string baseName = cwName.Replace("_clothwrappingasset", "").Replace("clothwrappingasset", "");
-                
-                // Extract the identifying part (e.g., "skirt" from "leia_princess_01_skirt")
-                int cwLastSlash = baseName.LastIndexOf('/');
-                string cwFileName = cwLastSlash >= 0 ? baseName.Substring(cwLastSlash + 1) : baseName;
-                
-                // Find matching EACloth - look for one that contains the same identifier
-                foreach (var ec in eaCloths)
-                {
-                    string ecName = ec.Name.ToLower();
-                    string ecBaseName = ClothAssetNaming.StripClothSuffix(ecName);
-                    int ecLastSlash = ecBaseName.LastIndexOf('/');
-                    string ecFileName = ecLastSlash >= 0 ? ecBaseName.Substring(ecLastSlash + 1) : ecBaseName;
-                    
-                    // Check if they share the same base identifier
-                    // e.g., both contain "skirt" or both end with same pattern
-                    if (cwFileName == ecFileName || cwFileName.EndsWith(ecFileName) || ecFileName.EndsWith(cwFileName))
-                    {
-                        _templateClothWrappingEntry = cw;
-                        _templateEAClothEntry = ec;
-                        ClothLogger.LogDebug($"Found matching template pair:");
-                        ClothLogger.LogDebug($"  ClothWrapping: {cw.Name}");
-                        ClothLogger.LogDebug($"  EACloth: {ec.Name}");
-                        return;
-                    }
-                }
+                _templateClothWrappingEntry = bestCw;
+                _templateEAClothEntry = bestEc;
+
+                string cwSource = linkedCwNames.Contains(bestCw.Name) ? "linked" : "name-fallback";
+                string ecSource = linkedEcNames.Contains(bestEc.Name) ? "linked" : "name-fallback";
+
+                ClothLogger.LogDebug("Found template pair by scoring:");
+                ClothLogger.LogDebug($"  MeshStem: {meshStem}");
+                ClothLogger.LogDebug($"  ClothWrapping: {bestCw.Name} (stem={bestCwStem}, source={cwSource})");
+                ClothLogger.LogDebug($"  EACloth: {bestEc.Name} (stem={bestEcStem}, source={ecSource})");
+                ClothLogger.LogDebug($"  PairScore: {bestScore}");
+                return;
             }
-            
-            // Fallback: just use first of each if no matching pair found
-            if (clothWrappings.Count > 0)
+
+            _templateClothWrappingEntry = FindBestByStem(meshStem, pairClothWrappings, GetClothWrappingStem);
+            _templateEAClothEntry = FindBestByStem(meshStem, pairEaCloths, GetEAClothStem);
+
+            if (_templateClothWrappingEntry != null)
             {
-                _templateClothWrappingEntry = clothWrappings[0];
-                ClothLogger.LogDebug($"Found template ClothWrapping (no match): {clothWrappings[0].Name}");
+                string source = linkedCwNames.Contains(_templateClothWrappingEntry.Name) ? "linked" : "name-fallback";
+                ClothLogger.LogDebug($"Found template ClothWrapping (single): {_templateClothWrappingEntry.Name} (source={source})");
             }
-            if (eaCloths.Count > 0)
+            if (_templateEAClothEntry != null)
             {
-                _templateEAClothEntry = eaCloths[0];
-                ClothLogger.LogDebug($"Found template EACloth (no match): {eaCloths[0].Name}");
+                string source = linkedEcNames.Contains(_templateEAClothEntry.Name) ? "linked" : "name-fallback";
+                ClothLogger.LogDebug($"Found template EACloth (single): {_templateEAClothEntry.Name} (source={source})");
             }
         }
 
